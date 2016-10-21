@@ -110,6 +110,22 @@ function HierarchicalHTMLReporter(options) {
     self.screenshotsFolder = (options.screenshotsFolder || 'screenshots').replace(/^\//, '') + '/';
     self.useDotNotation = options.useDotNotation === UNDEFINED ? true : options.useDotNotation;
     self.filePrefix = options.filePrefix || 'htmlReport';
+    self.concurrentRun = options.concurrentRun || false;
+
+    var openReport =
+        '<!DOCTYPE html>' +
+        '<head lang=en><meta charset=UTF-8>' +
+        '<script src="https://code.jquery.com/jquery-2.1.4.min.js"></script>' +
+        '<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/js/bootstrap.min.js"></script>' +
+        '<script>document.addEventListener("DOMContentLoaded", ' + checkboxHandling + ')</script>' +
+        '<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/css/bootstrap.min.css">' +
+        '<title></title>' +
+        '</head>' +
+        '<body>';
+
+    var closeReport =
+        '</body>' +
+        '</html>';
 
     var suites = [],
         currentSuite = null,
@@ -134,14 +150,65 @@ function HierarchicalHTMLReporter(options) {
         return __specs[spec.id];
     }
 
+    self.beforeLaunch = function() {
+        rmdir(self.savePath);
+    };
+
+    self.afterLaunch = function() {
+        if (!self.concurrentRun) {
+            return;
+        }
+        var output = openReport;
+        var failures = 0;
+        var skipped = 0;
+        var allStats = 0;
+        var list = fs.readdirSync(self.savePath);
+        for (var i = 0; i < list.length; i++) {
+            var filename = path.join(self.savePath, list[i]);
+            if (fs.statSync(filename).isDirectory()) {
+                continue;
+            }
+            var fileContent = JSON.parse(fs.readFileSync(filename, 'utf8'));
+
+            try {
+                fs.unlinkSync(filename);
+            }
+            catch (e) {log("problem trying to remove a json file");}
+
+            output += fileContent.suiteAsHtml;
+            failures += fileContent.failures;
+            allStats += fileContent.allStats;
+            skipped += fileContent.skipped;
+        }
+        var failuresClass = getFailureClass(failures);
+
+        output =
+            '<h3>' + ' Tests: ' + allStats + ' Skipped: ' + skipped + ' <span class="' +
+            failuresClass + '">Failures: ' + failures + '</span>' +
+            '<div style="float: right;">Show only failed tests<input type="checkbox" id="showOnlyFailed" name="showOnlyFailed" checked="' +
+            self.showOnlyFailedByDefault + '" style="margin: 10px;' +
+            'transform: scale(1.5); -webkit-transform: scale(1.5);"></div>' +
+            '</h3>' +
+            '<div class="panel-group" id="accordion" role="tablist" aria-multiselectable="true">' + output +
+            '</div>' + closeReport;
+
+        wrapOutputAndWriteFile(self.filePrefix, output);
+
+    };
+
     self.jasmineStarted = function(summary) {
         totalSpecsDefined = summary && summary.totalSpecsDefined || NaN;
+
+        browser.forkedInstances = {
+            'main': browser
+        };
         exportObject.startTime = new Date();
         self.started = true;
 
-        //Delete previous screenshoots
-        rmdir(self.savePath);
-
+        if (!self.concurrentRun) {
+            //Delete previous screenshoots
+            rmdir(self.savePath);
+        }
     };
     self.suiteStarted = function(suite) {
         suite = getSuite(suite);
@@ -180,19 +247,24 @@ function HierarchicalHTMLReporter(options) {
         //Take screenshots taking care of the configuration
         if ((self.takeScreenshots && !self.takeScreenshotsOnlyOnFailures) ||
             (self.takeScreenshots && self.takeScreenshotsOnlyOnFailures && isFailed(spec))) {
-            spec.screenshot = hat() + '.png';
-            browser.takeScreenshot().then(function(png) {
-                browser.getCapabilities().then(function(capabilities) {
-                    var screenshotPath;
+            _.each(browser.forkedInstances, function(browserInstance) {
+                if (!browserInstance) {
+                    return;
+                }
+                spec.screenshot = hat() + '.png';
+                browserInstance.takeScreenshot().then(function(png) {
+                    browserInstance.getCapabilities().then(function(capabilities) {
+                        var screenshotPath;
 
-                    //Folder structure and filename
-                    screenshotPath = path.join(self.savePath + self.screenshotsFolder, spec.screenshot);
+                        //Folder structure and filename
+                        screenshotPath = path.join(self.savePath + self.screenshotsFolder, spec.screenshot);
 
-                    mkdirp(path.dirname(screenshotPath), function(err) {
-                        if (err) {
-                            throw new Error('Could not create directory for ' + screenshotPath);
-                        }
-                        writeScreenshot(png, screenshotPath);
+                        mkdirp(path.dirname(screenshotPath), function(err) {
+                            if (err) {
+                                throw new Error('Could not create directory for ' + screenshotPath);
+                            }
+                            writeScreenshot(png, screenshotPath);
+                        });
                     });
                 });
             });
@@ -218,19 +290,30 @@ function HierarchicalHTMLReporter(options) {
         for (var i = 0; i < suites.length; i++) {
             output += suiteAsHtml(suites[i]);
         }
-        // if we have anything to write here, write out the consolidated file
+
         if (output) {
-            var failuresClass = getFailureClass(allStats.failures);
-            output =
-                '<h3>' + ' Tests: ' + allStats.tests + ' Skipped: ' + allStats.skipped + ' <span class="' +
-                failuresClass + '">Failures: ' + allStats.failures + '</span>' +
-                '<div style="float: right;">Show only failed tests<input type="checkbox" id="showOnlyFailed" name="showOnlyFailed" checked="' +
-                self.showOnlyFailedByDefault + '" style="margin: 10px;' +
-                'transform: scale(1.5); -webkit-transform: scale(1.5);"></div>' +
-                '</h3>' +
-                '<div class="panel-group" id="accordion" role="tablist" aria-multiselectable="true">' + output +
-                '</div>';
-            wrapOutputAndWriteFile(self.filePrefix, output);
+            if (self.concurrentRun) {
+                var jsonSuite = {};
+                jsonSuite.suiteAsHtml = output;
+                jsonSuite.failures = allStats.failures;
+                jsonSuite.allStats = allStats.tests;
+                jsonSuite.skipped = allStats.skipped;
+
+                writeJsonFile(getFullyQualifiedSuiteName(suites[0], true), jsonSuite);
+            }
+            else {
+                var failuresClass = getFailureClass(allStats.failures);
+                output =
+                    '<h3>' + ' Tests: ' + allStats.tests + ' Skipped: ' + allStats.skipped + ' <span class="' +
+                    failuresClass + '">Failures: ' + allStats.failures + '</span>' +
+                    '<div style="float: right;">Show only failed tests<input type="checkbox" id="showOnlyFailed" name="showOnlyFailed" checked="' +
+                    self.showOnlyFailedByDefault + '" style="margin: 10px;' +
+                    'transform: scale(1.5); -webkit-transform: scale(1.5);"></div>' +
+                    '</h3>' +
+                    '<div class="panel-group" id="accordion" role="tablist" aria-multiselectable="true">' + output +
+                    '</div>';
+                wrapOutputAndWriteFile(self.filePrefix, openReport + output + closeReport);
+            }
         }
         //log("Specs skipped but not reported (entire suite skipped or targeted to specific specs)", totalSpecsDefined -
         // totalSpecsExecuted + totalSpecsDisabled);
@@ -303,7 +386,7 @@ function HierarchicalHTMLReporter(options) {
         currentIndex++;
         var suiteNameAndTime = getFullyQualifiedSuiteName(suite) + ' - ' + elapsed(suite._startTime, suite._endTime) +
                                's';
-        var collapse = 'collapse' + currentIndex;
+        var collapse = 'collapse' + getFullyQualifiedSuiteName(suite, true);
         getMainSuitStatistics(suite, statObj);
 
         var resultObj = getFailureClass(statObj.failures);
@@ -345,7 +428,8 @@ function HierarchicalHTMLReporter(options) {
                     if (suite._specs && suite._specs.length) {
                         html += '<div class="panel panel-default ' + resultClass + '">';
                         html +=
-                            '<div class="panel-heading" style="background-color: ' + bgColor + ';" role="tab" id="' + 'head' +
+                            '<div class="panel-heading" style="background-color: ' + bgColor + ';" role="tab" id="' +
+                            'head' +
                             collapseId +
                             '"><h4 class="panel-title">';
                         html += '<a class="" role="button" data-toggle="collapse" href="#' + collapseId +
@@ -452,8 +536,8 @@ function HierarchicalHTMLReporter(options) {
             return;
         }
 
-        // Attempt writing with each possible environment.
-        // Track errors in case no write succeeds
+        //Attempt writing with each possible environment.
+        //Track errors in case no write succeeds
         try {
             phantomWrite(path, filename, text);
             return;
@@ -470,22 +554,14 @@ function HierarchicalHTMLReporter(options) {
         );
     };
 
-    // To remove complexity and be more DRY about the silly preamble and <testsuites> element
-    var prefix = '<!DOCTYPE html>' +
-                 '<head lang=en><meta charset=UTF-8>' +
-                 '<script src="https://code.jquery.com/jquery-2.1.4.min.js"></script>' +
-                 '<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/js/bootstrap.min.js"></script>' +
-                 '<script>document.addEventListener("DOMContentLoaded", ' + checkboxHandling + ')</script>' +
-                 '<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/css/bootstrap.min.css">' +
-                 '<title></title>' +
-                 '</head>' +
-                 '<body>';
-
-    var suffix = '</body></html>';
-
     function wrapOutputAndWriteFile(filename, text) {
         if (filename.substr(-5) !== '.html') { filename += '.html'; }
-        self.writeFile(filename, (prefix + text + suffix));
+        self.writeFile(filename, text);
+    }
+
+    function writeJsonFile(filename, text) {
+        filename += '.json';
+        self.writeFile(filename, JSON.stringify(text));
     }
 
     return this;
