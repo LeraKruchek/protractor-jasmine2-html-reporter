@@ -1,25 +1,21 @@
-# protractor-jasmine2-html-reporter
-[![npm version](https://badge.fury.io/js/protractor-jasmine2-html-reporter.svg)](http://badge.fury.io/js/protractor-jasmine2-html-reporter)
+# protractor-html-hierarchical-reporter
 
-HTML reporter for Jasmine2 and Protractor that will include screenshots of each test if you want.
-This work is inspired by:
-* [Protractor Jasmine 2 Screenshot Reporter](https://github.com/mlison/protractor-jasmine2-screenshot-reporter) from [@mslison](https://github.com/mlison)
-* [Jasmine Reporters](https://github.com/larrymyers/jasmine-reporters) from [@larrymyers](https://github.com/larrymyers)
+HTML reporter for Jasmine2 and Protractor that will include screenshots of each test if you want and display suits hierarchically.
 
 ## Usage
-The <code>protractor-jasmine2-html-reporter</code> is available via npm:
+The <code>protractor-html-hierarchical-reporter</code> is available via npm:
 
-<code>$ npm install protractor-jasmine2-html-reporter --save-dev</code>
+<code>$ npm install protractor-html-hierarchical-reporter --save-dev</code>
 
-In your Protractor configuration file, register protractor-jasmine2-html-reporter in jasmine:
+In your Protractor configuration file, register protractor-html-hierarchical-reporter in jasmine:
 
-<pre><code>var Jasmine2HtmlReporter = require('protractor-jasmine2-html-reporter');
+<pre><code>var HierarchicalHTMLReporter = require('protractor-html-hierarchical-reporter');
 
 exports.config = {
    // ...
    onPrepare: function() {
       jasmine.getEnv().addReporter(
-        new Jasmine2HtmlReporter({
+        new HierarchicalHTMLReporter({
           savePath: 'target/screenshots'
         })
       );
@@ -33,7 +29,7 @@ Output directory for created files. All screenshots and reports will be stored h
 
 If the directory doesn't exist, it will be created automatically or otherwise cleaned before running the test suite.
 
-<pre><code>jasmine.getEnv().addReporter(new Jasmine2HtmlReporter({
+<pre><code>jasmine.getEnv().addReporter(new HierarchicalHTMLReporter({
    savePath: './test/reports/'
 }));</code></pre>
 
@@ -45,7 +41,7 @@ By default the screenshots are stored in a folder inside the default path
 
 If the directory doesn't exist, it will be created automatically or otherwise cleaned before running the test suite.
 
-<pre><code>jasmine.getEnv().addReporter(new Jasmine2HtmlReporter({
+<pre><code>jasmine.getEnv().addReporter(new HierarchicalHTMLReporter({
    savePath: './test/reports/',
    screenshotsFolder: 'images'
 }));</code></pre>
@@ -56,7 +52,7 @@ Default folder: <code>screenshots</code>
 
 When this option is enabled, reporter will create screenshots for specs.
 
-<pre><code>jasmine.getEnv().addReporter(new Jasmine2HtmlReporter({
+<pre><code>jasmine.getEnv().addReporter(new HierarchicalHTMLReporter({
    takeScreenshots: false
 }));</code></pre>
 
@@ -67,7 +63,7 @@ Default is <code>true</code>
 This option allows you to choose if create screenshots always or only when failures.
 If you disable screenshots, obviously this option will not be taken into account.
 
-<pre><code>jasmine.getEnv().addReporter(new Jasmine2HtmlReporter({
+<pre><code>jasmine.getEnv().addReporter(new HierarchicalHTMLReporter({
    takeScreenshots: true,
    takeScreenshotsOnlyOnFailures: true
 }));</code></pre>
@@ -78,20 +74,9 @@ Default is <code>false</code> (So screenshots are always generated)
 
 Filename for html report.
 
-<pre><code>jasmine.getEnv().addReporter(new Jasmine2HtmlReporter({
+<pre><code>jasmine.getEnv().addReporter(new HierarchicalHTMLReporter({
    savePath: './test/reports/',
    filePrefix: 'index'
 }));</code></pre>
 
 Default is <code>htmlReport.html</code>
-
-### Consolidate and ConsolidateAll (optional)
-
-This option allow you to create diferent HTML for each test suite.
-
-<pre><code>jasmine.getEnv().addReporter(new Jasmine2HtmlReporter({
-   consolidate: true,
-   consolidateAll: true
-}));</code></pre>
-
-Default is <code>false</code>
