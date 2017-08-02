@@ -162,7 +162,11 @@ function HierarchicalHTMLReporter(options) {
         var failures = 0;
         var skipped = 0;
         var allStats = 0;
-        var list = fs.readdirSync(self.savePath);
+        var list = fs.readdirSync(self.savePath)
+                     .filter(function(fileName) {
+                        return path.extname(fileName) === '.json';
+                     });
+
         for (var i = 0; i < list.length; i++) {
             var filename = path.join(self.savePath, list[i]);
             if (fs.statSync(filename).isDirectory()) {
